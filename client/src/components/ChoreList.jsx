@@ -12,8 +12,13 @@ export default function ChoreList({ chores, onToggle }) {
           onClick={() => onToggle(chore)}
         >
           <span className="chore-icon">{chore.icon}</span>
-          <span className="chore-title">{chore.title}</span>
-          <span className="chore-stars">+{chore.stars}⭐</span>
+          <span className="chore-title">
+            {chore.title}
+            {chore.remarks && <span className="chore-remarks">{chore.remarks}</span>}
+          </span>
+          <span className={`chore-stars ${chore.stars < 0 ? "negative" : ""}`}>
+            {chore.stars >= 0 ? "+" : ""}{chore.stars}⭐
+          </span>
           <span className="chore-check">{chore.done ? "✅" : "⬜"}</span>
         </button>
       ))}

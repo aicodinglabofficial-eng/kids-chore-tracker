@@ -24,6 +24,7 @@ db.exec(`
     title TEXT NOT NULL,
     icon TEXT NOT NULL DEFAULT '⭐',
     stars INTEGER NOT NULL DEFAULT 1,
+    remarks TEXT NOT NULL DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -54,6 +55,11 @@ db.exec(`
     redeemed_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+const choreCols = db.prepare("PRAGMA table_info(chores)").all().map((c) => c.name);
+if (!choreCols.includes("remarks")) {
+  db.exec("ALTER TABLE chores ADD COLUMN remarks TEXT NOT NULL DEFAULT ''");
+}
 
 const kidCount = db.prepare("SELECT COUNT(*) AS n FROM kids").get().n;
 

@@ -239,6 +239,33 @@ button {
   font-size: 13px;
 }
 
+.btn-outline {
+  background: white;
+  color: var(--purple);
+  border: 2px solid var(--purple);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.btn-outline:disabled {
+  color: #C7C2E0;
+  border-color: #E2DEF5;
+  cursor: not-allowed;
+}
+
+.btn-outline.sm {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.btn-primary.sm,
+.btn-ghost.sm {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
 .text-input {
   border: 2px solid #E2DEF5;
   border-radius: 12px;
@@ -387,6 +414,18 @@ button {
 .chore-stars {
   color: #B8860B;
   text-decoration: none;
+}
+
+.chore-stars.negative {
+  color: var(--danger);
+}
+
+.chore-remarks {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8B85B0;
+  margin-top: 2px;
 }
 
 .chore-check {
@@ -550,6 +589,16 @@ button {
   color: #B8860B;
 }
 
+.manage-meta.negative {
+  color: var(--danger);
+}
+
+.manage-date {
+  color: #8B85B0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .inline-form {
   display: flex;
   flex-wrap: wrap;
@@ -559,4 +608,92 @@ button {
 .inline-form .text-input:first-child {
   flex: 1;
   min-width: 140px;
+}
+
+/* ---- Copy chores ---- */
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.select-input-wide {
+  width: auto;
+  min-width: 160px;
+  text-align: left;
+  font-size: 15px;
+}
+
+.copy-msg {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+/* ---- Chore edit row ---- */
+.editing-row {
+  flex-wrap: wrap;
+}
+
+.edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ---- History ---- */
+.history-view {
+  margin-top: 6px;
+}
+
+.history-date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.history-stat {
+  background: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-stat-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8B85B0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.history-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #B8860B;
+}
+
+.history-stat-value.negative {
+  color: var(--danger);
+}
+
+.history-section-title {
+  font-size: 16px;
+  margin: 20px 0 6px;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, todayStr } from "../api.js";
 import ChoreList from "./ChoreList.jsx";
 import RewardsStore from "./RewardsStore.jsx";
+import HistoryView from "./HistoryView.jsx";
 
 const CHEERS = ["Awesome job! 🎉", "You're a star! 🌟", "Way to go! 🙌", "Amazing! ✨", "Nailed it! 💪"];
 
@@ -76,13 +77,16 @@ export default function KidDashboard({ kid, onBack, onKidUpdated }) {
         <button className={`tab-btn ${tab === "rewards" ? "active" : ""}`} onClick={() => setTab("rewards")}>
           🎁 Rewards Store
         </button>
+        <button className={`tab-btn ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
+          📅 History
+        </button>
       </div>
 
-      {tab === "chores" ? (
-        <ChoreList chores={chores} onToggle={toggleChore} />
-      ) : (
+      {tab === "chores" && <ChoreList chores={chores} onToggle={toggleChore} />}
+      {tab === "rewards" && (
         <RewardsStore rewards={rewards} balance={balance} onRedeem={redeemReward} />
       )}
+      {tab === "history" && <HistoryView kidId={kid.id} />}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
