@@ -1,19 +1,19 @@
-import Database from "better-sqlite3";
+import { createClient } from "@libsql/client";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
+fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = path.join(dataDir, "chore-tracker.db");
 
-fs.mkdirSync(dataDir, { recursive: true });
+const url = process.env.TURSO_DATABASE_URL || `file:${dbPath}`;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-export const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+export const db = createClient(authToken ? { url, authToken } : { url });
 
-db.exec(`
+await db.executeMultiple(`
   CREATE TABLE IF NOT EXISTS kids (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -60,39 +60,50 @@ db.exec(`
   );
 `);
 
-const choreCols = db.prepare("PRAGMA table_info(chores)").all().map((c) => c.name);
+const choreColsResult = await db.execute("PRAGMA table_info(chores)");
+const choreCols = choreColsResult.rows.map((r) => r.name);
 if (!choreCols.includes("remarks")) {
-  db.exec("ALTER TABLE chores ADD COLUMN remarks TEXT NOT NULL DEFAULT ''");
+  await db.execute("ALTER TABLE chores ADD COLUMN remarks TEXT NOT NULL DEFAULT ''");
 }
 
-const kidCount = db.prepare("SELECT COUNT(*) AS n FROM kids").get().n;
+const kidCount = (await db.execute("SELECT COUNT(*) AS n FROM kids")).rows[0].n;
 
 if (kidCount === 0) {
-  const insertKid = db.prepare(
-    "INSERT INTO kids (name, avatar, color) VALUES (?, ?, ?)"
-  );
-  const insertChore = db.prepare(
-    "INSERT INTO chores (kid_id, title, icon, stars) VALUES (?, ?, ?, ?)"
-  );
-  const insertReward = db.prepare(
-    "INSERT INTO rewards (kid_id, title, icon, cost) VALUES (?, ?, ?, ?)"
-  );
-
-  const seed = db.transaction(() => {
-    const mia = insertKid.run("Mia", "🦄", "#FF6FA5").lastInsertRowid;
-    const leo = insertKid.run("Leo", "🐯", "#3DB2FF").lastInsertRowid;
-
-    for (const [kidId] of [[mia], [leo]]) {
-      insertChore.run(kidId, "Brush teeth", "🦷", 2);
-      insertChore.run(kidId, "Make bed", "🛏️", 2);
-      insertChore.run(kidId, "Homework time", "📚", 3);
-      insertChore.run(kidId, "Feed the pet", "🐶", 2);
-      insertChore.run(kidId, "Tidy up toys", "🧸", 2);
-
-      insertReward.run(kidId, "Extra story time", "📖", 8);
-      insertReward.run(kidId, "Choose dinner", "🍕", 12);
-      insertReward.run(kidId, "Movie night", "🎬", 20);
-    }
+  const mia = await db.execute({
+    sql: "INSERT INTO kids (name, avatar, color) VALUES (?, ?, ?)",
+    args: ["Mia", "🦄", "#FF6FA5"],
   });
-  seed();
+  const leo = await db.execute({
+    sql: "INSERT INTO kids (name, avatar, color) VALUES (?, ?, ?)",
+    args: ["Leo", "🐯", "#3DB2FF"],
+  });
+
+  const kidIds = [Number(mia.lastInsertRowid), Number(leo.lastInsertRowid)];
+  const starterChores = [
+    ["Brush teeth", "🦷", 2],
+    ["Make bed", "🛏️", 2],
+    ["Homework time", "📚", 3],
+    ["Feed the pet", "🐶", 2],
+    ["Tidy up toys", "🧸", 2],
+  ];
+  const starterRewards = [
+    ["Extra story time", "📖", 8],
+    ["Choose dinner", "🍕", 12],
+    ["Movie night", "🎬", 20],
+  ];
+
+  for (const kidId of kidIds) {
+    for (const [title, icon, stars] of starterChores) {
+      await db.execute({
+        sql: "INSERT INTO chores (kid_id, title, icon, stars) VALUES (?, ?, ?, ?)",
+        args: [kidId, title, icon, stars],
+      });
+    }
+    for (const [title, icon, cost] of starterRewards) {
+      await db.execute({
+        sql: "INSERT INTO rewards (kid_id, title, icon, cost) VALUES (?, ?, ?, ?)",
+        args: [kidId, title, icon, cost],
+      });
+    }
+  }
 }
