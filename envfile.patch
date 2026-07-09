@@ -1,0 +1,39 @@
+From 4ed1d32230243f0ec2a8fde05fefe0694b688471 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 8 Jul 2026 19:45:30 +0000
+Subject: [PATCH] Load server env vars from .env automatically in local dev
+
+Use Node's built-in --env-file-if-exists so TURSO_DATABASE_URL/TURSO_AUTH_TOKEN
+can be set once in a local .env file instead of retyped every session.
+---
+ server/.env.example | 2 ++
+ server/package.json | 4 ++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+ create mode 100644 server/.env.example
+
+diff --git a/server/.env.example b/server/.env.example
+new file mode 100644
+index 0000000..7113ad8
+--- /dev/null
++++ b/server/.env.example
+@@ -0,0 +1,2 @@
++TURSO_DATABASE_URL=libsql://your-database-name.turso.io
++TURSO_AUTH_TOKEN=your-token-here
+diff --git a/server/package.json b/server/package.json
+index 0244eec..d99f5a9 100644
+--- a/server/package.json
++++ b/server/package.json
+@@ -5,8 +5,8 @@
+   "type": "module",
+   "main": "src/index.js",
+   "scripts": {
+-    "dev": "node --watch src/index.js",
+-    "start": "node src/index.js"
++    "dev": "node --watch --env-file-if-exists=.env src/index.js",
++    "start": "node --env-file-if-exists=.env src/index.js"
+   },
+   "dependencies": {
+     "@libsql/client": "^0.17.4",
+-- 
+2.43.0
+

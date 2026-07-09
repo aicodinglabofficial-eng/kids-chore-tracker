@@ -1,0 +1,817 @@
+From 1140f1ab18f009cb00ef3eb3df749cdaecb3dbbf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 7 Jul 2026 16:48:51 +0000
+Subject: [PATCH] Add chore copying, history/calendar, penalty chores, remarks,
+ and redemption reset
+
+- Copy all chores from one kid to another in Parent Zone (skips duplicates by title)
+- Kid dashboard gains a History tab with a date picker showing that day's earned/spent/net score plus a running balance through that date
+- Chores support negative star values (penalty/demerit chores) and per-chore remarks, editable from Parent Zone
+- Parent Zone shows redemption history per kid with a Reset button to undo a claimed reward and restore its stars
+---
+ client/src/api.js                      |  11 ++
+ client/src/components/ChoreList.jsx    |   9 +-
+ client/src/components/HistoryView.jsx  |  96 ++++++++++++++
+ client/src/components/KidDashboard.jsx |  10 +-
+ client/src/components/ParentZone.jsx   | 171 +++++++++++++++++++++++--
+ client/src/index.css                   | 137 ++++++++++++++++++++
+ server/src/db.js                       |   6 +
+ server/src/routes.js                   | 153 +++++++++++++++++++++-
+ 8 files changed, 573 insertions(+), 20 deletions(-)
+ create mode 100644 client/src/components/HistoryView.jsx
+
+diff --git a/client/src/api.js b/client/src/api.js
+index 1bdb7a4..d8b0e16 100644
+--- a/client/src/api.js
++++ b/client/src/api.js
+@@ -20,13 +20,24 @@ export const api = {
+ 
+   getChores: (kidId, date) => request(`/kids/${kidId}/chores?date=${date}`),
+   addChore: (kidId, data) => request(`/kids/${kidId}/chores`, { method: "POST", body: JSON.stringify(data) }),
++  updateChore: (id, data) => request(`/chores/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+   deleteChore: (id) => request(`/chores/${id}`, { method: "DELETE" }),
+   toggleChore: (id, date) => request(`/chores/${id}/toggle`, { method: "POST", body: JSON.stringify({ date }) }),
++  copyChores: (targetKidId, sourceKidId) =>
++    request(`/kids/${targetKidId}/chores/copy`, {
++      method: "POST",
++      body: JSON.stringify({ sourceKidId }),
++    }),
++
++  getHistory: (kidId, date) => request(`/kids/${kidId}/history?date=${date}`),
+ 
+   getRewards: (kidId) => request(`/kids/${kidId}/rewards`),
+   addReward: (kidId, data) => request(`/kids/${kidId}/rewards`, { method: "POST", body: JSON.stringify(data) }),
+   deleteReward: (id) => request(`/rewards/${id}`, { method: "DELETE" }),
+   redeemReward: (id) => request(`/rewards/${id}/redeem`, { method: "POST" }),
++
++  getRedemptions: (kidId) => request(`/kids/${kidId}/redemptions`),
++  undoRedemption: (id) => request(`/redemptions/${id}`, { method: "DELETE" }),
+ };
+ 
+ export function todayStr() {
+diff --git a/client/src/components/ChoreList.jsx b/client/src/components/ChoreList.jsx
+index ef9bfd8..5c36b07 100644
+--- a/client/src/components/ChoreList.jsx
++++ b/client/src/components/ChoreList.jsx
+@@ -12,8 +12,13 @@ export default function ChoreList({ chores, onToggle }) {
+           onClick={() => onToggle(chore)}
+         >
+           <span className="chore-icon">{chore.icon}</span>
+-          <span className="chore-title">{chore.title}</span>
+-          <span className="chore-stars">+{chore.stars}⭐</span>
++          <span className="chore-title">
++            {chore.title}
++            {chore.remarks && <span className="chore-remarks">{chore.remarks}</span>}
++          </span>
++          <span className={`chore-stars ${chore.stars < 0 ? "negative" : ""}`}>
++            {chore.stars >= 0 ? "+" : ""}{chore.stars}⭐
++          </span>
+           <span className="chore-check">{chore.done ? "✅" : "⬜"}</span>
+         </button>
+       ))}
+diff --git a/client/src/components/HistoryView.jsx b/client/src/components/HistoryView.jsx
+new file mode 100644
+index 0000000..300fc24
+--- /dev/null
++++ b/client/src/components/HistoryView.jsx
+@@ -0,0 +1,96 @@
++import { useEffect, useState } from "react";
++import { api, todayStr } from "../api.js";
++
++export default function HistoryView({ kidId }) {
++  const [date, setDate] = useState(todayStr());
++  const [data, setData] = useState(null);
++
++  useEffect(() => {
++    let cancelled = false;
++    setData(null);
++    api.getHistory(kidId, date).then((d) => {
++      if (!cancelled) setData(d);
++    });
++    return () => {
++      cancelled = true;
++    };
++  }, [kidId, date]);
++
++  return (
++    <div className="history-view">
++      <div className="history-date-row">
++        <label className="field-label" htmlFor="history-date">Pick a date</label>
++        <input
++          id="history-date"
++          type="date"
++          className="text-input"
++          value={date}
++          max={todayStr()}
++          onChange={(e) => setDate(e.target.value)}
++        />
++      </div>
++
++      {!data ? (
++        <p className="empty-hint">Loading…</p>
++      ) : (
++        <>
++          <div className="history-summary">
++            <div className="history-stat">
++              <span className="history-stat-label">Earned</span>
++              <span className="history-stat-value">+{data.earned}⭐</span>
++            </div>
++            <div className="history-stat">
++              <span className="history-stat-label">Spent</span>
++              <span className="history-stat-value">-{data.spent}⭐</span>
++            </div>
++            <div className="history-stat">
++              <span className="history-stat-label">Day's score</span>
++              <span className={`history-stat-value ${data.net < 0 ? "negative" : ""}`}>
++                {data.net >= 0 ? "+" : ""}{data.net}⭐
++              </span>
++            </div>
++            <div className="history-stat">
++              <span className="history-stat-label">Balance through this day</span>
++              <span className={`history-stat-value ${data.balanceThrough < 0 ? "negative" : ""}`}>
++                {data.balanceThrough}⭐
++              </span>
++            </div>
++          </div>
++
++          <h3 className="history-section-title">Chores completed</h3>
++          {data.completions.length === 0 ? (
++            <p className="empty-hint">No chores completed on this day.</p>
++          ) : (
++            <ul className="manage-list">
++              {data.completions.map((c) => (
++                <li key={c.completion_id}>
++                  <span>
++                    {c.icon} {c.title}
++                    {c.remarks && <span className="chore-remarks">{c.remarks}</span>}
++                  </span>
++                  <span className={`manage-meta ${c.stars < 0 ? "negative" : ""}`}>
++                    {c.stars >= 0 ? "+" : ""}{c.stars}⭐
++                  </span>
++                </li>
++              ))}
++            </ul>
++          )}
++
++          <h3 className="history-section-title">Rewards claimed</h3>
++          {data.redemptions.length === 0 ? (
++            <p className="empty-hint">No rewards claimed on this day.</p>
++          ) : (
++            <ul className="manage-list">
++              {data.redemptions.map((r) => (
++                <li key={r.id}>
++                  <span>{r.icon} {r.title}</span>
++                  <span className="manage-meta negative">-{r.cost}⭐</span>
++                </li>
++              ))}
++            </ul>
++          )}
++        </>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/components/KidDashboard.jsx b/client/src/components/KidDashboard.jsx
+index 839575c..1c37e66 100644
+--- a/client/src/components/KidDashboard.jsx
++++ b/client/src/components/KidDashboard.jsx
+@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
+ import { api, todayStr } from "../api.js";
+ import ChoreList from "./ChoreList.jsx";
+ import RewardsStore from "./RewardsStore.jsx";
++import HistoryView from "./HistoryView.jsx";
+ 
+ const CHEERS = ["Awesome job! 🎉", "You're a star! 🌟", "Way to go! 🙌", "Amazing! ✨", "Nailed it! 💪"];
+ 
+@@ -76,13 +77,16 @@ export default function KidDashboard({ kid, onBack, onKidUpdated }) {
+         <button className={`tab-btn ${tab === "rewards" ? "active" : ""}`} onClick={() => setTab("rewards")}>
+           🎁 Rewards Store
+         </button>
++        <button className={`tab-btn ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
++          📅 History
++        </button>
+       </div>
+ 
+-      {tab === "chores" ? (
+-        <ChoreList chores={chores} onToggle={toggleChore} />
+-      ) : (
++      {tab === "chores" && <ChoreList chores={chores} onToggle={toggleChore} />}
++      {tab === "rewards" && (
+         <RewardsStore rewards={rewards} balance={balance} onRedeem={redeemReward} />
+       )}
++      {tab === "history" && <HistoryView kidId={kid.id} />}
+ 
+       {toast && <div className="toast">{toast}</div>}
+     </div>
+diff --git a/client/src/components/ParentZone.jsx b/client/src/components/ParentZone.jsx
+index 59c39f3..b218e89 100644
+--- a/client/src/components/ParentZone.jsx
++++ b/client/src/components/ParentZone.jsx
+@@ -8,8 +8,13 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+   const [selectedKidId, setSelectedKidId] = useState(kids[0]?.id ?? null);
+   const [chores, setChores] = useState([]);
+   const [rewards, setRewards] = useState([]);
+-  const [choreForm, setChoreForm] = useState({ title: "", icon: CHORE_ICONS[0], stars: 2 });
++  const [redemptions, setRedemptions] = useState([]);
++  const [choreForm, setChoreForm] = useState({ title: "", icon: CHORE_ICONS[0], stars: 2, remarks: "" });
+   const [rewardForm, setRewardForm] = useState({ title: "", icon: REWARD_ICONS[0], cost: 10 });
++  const [copySourceId, setCopySourceId] = useState("");
++  const [copyMsg, setCopyMsg] = useState("");
++  const [editingChoreId, setEditingChoreId] = useState(null);
++  const [editChoreForm, setEditChoreForm] = useState({ title: "", icon: "", stars: 0, remarks: "" });
+ 
+   const selectedKid = kids.find((k) => k.id === selectedKidId);
+ 
+@@ -17,14 +22,40 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+     if (!selectedKidId) return;
+     api.getChores(selectedKidId, new Date().toISOString().slice(0, 10)).then(setChores);
+     api.getRewards(selectedKidId).then(setRewards);
++    api.getRedemptions(selectedKidId).then(setRedemptions);
++    setCopySourceId("");
++    setCopyMsg("");
++    setEditingChoreId(null);
+   }, [selectedKidId]);
+ 
++  async function refreshKids() {
++    const updated = await api.getKids();
++    onKidsChanged(updated);
++  }
++
+   async function addChore(e) {
+     e.preventDefault();
+     if (!choreForm.title.trim()) return;
+     const chore = await api.addChore(selectedKidId, choreForm);
+     setChores((prev) => [...prev, chore]);
+-    setChoreForm({ title: "", icon: CHORE_ICONS[0], stars: 2 });
++    setChoreForm({ title: "", icon: CHORE_ICONS[0], stars: 2, remarks: "" });
++  }
++
++  function startEditChore(chore) {
++    setEditingChoreId(chore.id);
++    setEditChoreForm({
++      title: chore.title,
++      icon: chore.icon,
++      stars: chore.stars,
++      remarks: chore.remarks || "",
++    });
++  }
++
++  async function saveEditChore(id) {
++    if (!editChoreForm.title.trim()) return;
++    const updated = await api.updateChore(id, editChoreForm);
++    setChores((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
++    setEditingChoreId(null);
+   }
+ 
+   async function removeChore(id) {
+@@ -32,6 +63,18 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+     setChores((prev) => prev.filter((c) => c.id !== id));
+   }
+ 
++  async function copyChoresFrom() {
++    if (!copySourceId) return;
++    const result = await api.copyChores(selectedKidId, copySourceId);
++    setChores(result.chores);
++    setCopyMsg(
++      result.copiedCount > 0
++        ? `Copied ${result.copiedCount} chore${result.copiedCount === 1 ? "" : "s"}.`
++        : "Nothing new to copy — those chores already exist."
++    );
++    setCopySourceId("");
++  }
++
+   async function addReward(e) {
+     e.preventDefault();
+     if (!rewardForm.title.trim()) return;
+@@ -45,6 +88,12 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+     setRewards((prev) => prev.filter((r) => r.id !== id));
+   }
+ 
++  async function resetRedemption(id) {
++    await api.undoRedemption(id);
++    setRedemptions((prev) => prev.filter((r) => r.id !== id));
++    await refreshKids();
++  }
++
+   async function removeKid(id) {
+     if (!confirm("Remove this kid's profile and all their data?")) return;
+     await api.deleteKid(id);
+@@ -84,16 +133,89 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+                 Remove Profile
+               </button>
+             </div>
++
++            {kids.length > 1 && (
++              <div className="copy-row">
++                <select
++                  className="text-input select-input-wide"
++                  value={copySourceId}
++                  onChange={(e) => setCopySourceId(e.target.value)}
++                >
++                  <option value="">Copy chores from…</option>
++                  {kids
++                    .filter((k) => k.id !== selectedKidId)
++                    .map((k) => (
++                      <option key={k.id} value={k.id}>
++                        {k.avatar} {k.name}
++                      </option>
++                    ))}
++                </select>
++                <button className="btn btn-outline sm" disabled={!copySourceId} onClick={copyChoresFrom}>
++                  Copy Chores
++                </button>
++                {copyMsg && <span className="copy-msg">{copyMsg}</span>}
++              </div>
++            )}
++
+             <ul className="manage-list">
+-              {chores.map((c) => (
+-                <li key={c.id}>
+-                  <span>{c.icon} {c.title}</span>
+-                  <span className="manage-meta">+{c.stars}⭐</span>
+-                  <button className="btn btn-danger-outline sm" onClick={() => removeChore(c.id)}>
+-                    Delete
+-                  </button>
+-                </li>
+-              ))}
++              {chores.map((c) =>
++                editingChoreId === c.id ? (
++                  <li key={c.id} className="editing-row">
++                    <div className="edit-row">
++                      <input
++                        className="text-input"
++                        value={editChoreForm.title}
++                        onChange={(e) => setEditChoreForm({ ...editChoreForm, title: e.target.value })}
++                      />
++                      <select
++                        className="text-input select-input"
++                        value={editChoreForm.icon}
++                        onChange={(e) => setEditChoreForm({ ...editChoreForm, icon: e.target.value })}
++                      >
++                        {CHORE_ICONS.map((i) => (
++                          <option key={i} value={i}>{i}</option>
++                        ))}
++                      </select>
++                      <input
++                        className="text-input num-input"
++                        type="number"
++                        min="-10"
++                        max="10"
++                        value={editChoreForm.stars}
++                        onChange={(e) => setEditChoreForm({ ...editChoreForm, stars: e.target.value })}
++                      />
++                      <input
++                        className="text-input"
++                        placeholder="Remarks (optional)"
++                        value={editChoreForm.remarks}
++                        onChange={(e) => setEditChoreForm({ ...editChoreForm, remarks: e.target.value })}
++                      />
++                    </div>
++                    <button className="btn btn-primary sm" onClick={() => saveEditChore(c.id)}>
++                      Save
++                    </button>
++                    <button className="btn btn-ghost sm" onClick={() => setEditingChoreId(null)}>
++                      Cancel
++                    </button>
++                  </li>
++                ) : (
++                  <li key={c.id}>
++                    <span>
++                      {c.icon} {c.title}
++                      {c.remarks && <span className="chore-remarks">{c.remarks}</span>}
++                    </span>
++                    <span className={`manage-meta ${c.stars < 0 ? "negative" : ""}`}>
++                      {c.stars >= 0 ? "+" : ""}{c.stars}⭐
++                    </span>
++                    <button className="btn btn-outline sm" onClick={() => startEditChore(c)}>
++                      Edit
++                    </button>
++                    <button className="btn btn-danger-outline sm" onClick={() => removeChore(c.id)}>
++                      Delete
++                    </button>
++                  </li>
++                )
++              )}
+             </ul>
+             <form className="inline-form" onSubmit={addChore}>
+               <input
+@@ -114,11 +236,18 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+               <input
+                 className="text-input num-input"
+                 type="number"
+-                min="1"
++                min="-10"
+                 max="10"
++                title="Use a negative number for a penalty / demerit chore"
+                 value={choreForm.stars}
+                 onChange={(e) => setChoreForm({ ...choreForm, stars: e.target.value })}
+               />
++              <input
++                className="text-input"
++                placeholder="Remarks (optional)"
++                value={choreForm.remarks}
++                onChange={(e) => setChoreForm({ ...choreForm, remarks: e.target.value })}
++              />
+               <button className="btn btn-primary" type="submit">Add Chore</button>
+             </form>
+           </section>
+@@ -162,6 +291,24 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
+               />
+               <button className="btn btn-primary" type="submit">Add Reward</button>
+             </form>
++
++            <h3 className="history-section-title">Redemption History</h3>
++            {redemptions.length === 0 ? (
++              <p className="empty-hint">No rewards claimed yet.</p>
++            ) : (
++              <ul className="manage-list">
++                {redemptions.map((r) => (
++                  <li key={r.id}>
++                    <span>{r.icon} {r.title}</span>
++                    <span className="manage-date">{r.redeemed_at.slice(0, 10)}</span>
++                    <span className="manage-meta negative">-{r.cost}⭐</span>
++                    <button className="btn btn-outline sm" onClick={() => resetRedemption(r.id)}>
++                      Reset
++                    </button>
++                  </li>
++                ))}
++              </ul>
++            )}
+           </section>
+         </div>
+       )}
+diff --git a/client/src/index.css b/client/src/index.css
+index df45d5a..8d50cd7 100644
+--- a/client/src/index.css
++++ b/client/src/index.css
+@@ -239,6 +239,33 @@ button {
+   font-size: 13px;
+ }
+ 
++.btn-outline {
++  background: white;
++  color: var(--purple);
++  border: 2px solid var(--purple);
++  border-radius: 12px;
++  padding: 8px 14px;
++  font-weight: 700;
++}
++
++.btn-outline:disabled {
++  color: #C7C2E0;
++  border-color: #E2DEF5;
++  cursor: not-allowed;
++}
++
++.btn-outline.sm {
++  padding: 6px 10px;
++  font-size: 13px;
++}
++
++.btn-primary.sm,
++.btn-ghost.sm {
++  padding: 6px 10px;
++  font-size: 13px;
++  border-radius: 10px;
++}
++
+ .text-input {
+   border: 2px solid #E2DEF5;
+   border-radius: 12px;
+@@ -389,6 +416,18 @@ button {
+   text-decoration: none;
+ }
+ 
++.chore-stars.negative {
++  color: var(--danger);
++}
++
++.chore-remarks {
++  display: block;
++  font-size: 12px;
++  font-weight: 500;
++  color: #8B85B0;
++  margin-top: 2px;
++}
++
+ .chore-check {
+   font-size: 22px;
+ }
+@@ -550,6 +589,16 @@ button {
+   color: #B8860B;
+ }
+ 
++.manage-meta.negative {
++  color: var(--danger);
++}
++
++.manage-date {
++  color: #8B85B0;
++  font-size: 13px;
++  font-weight: 500;
++}
++
+ .inline-form {
+   display: flex;
+   flex-wrap: wrap;
+@@ -560,3 +609,91 @@ button {
+   flex: 1;
+   min-width: 140px;
+ }
++
++/* ---- Copy chores ---- */
++.copy-row {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  flex-wrap: wrap;
++  margin: 12px 0;
++}
++
++.select-input-wide {
++  width: auto;
++  min-width: 160px;
++  text-align: left;
++  font-size: 15px;
++}
++
++.copy-msg {
++  font-size: 13px;
++  font-weight: 700;
++  color: var(--green);
++}
++
++/* ---- Chore edit row ---- */
++.editing-row {
++  flex-wrap: wrap;
++}
++
++.edit-row {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  flex: 1;
++  min-width: 220px;
++}
++
++/* ---- History ---- */
++.history-view {
++  margin-top: 6px;
++}
++
++.history-date-row {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  margin-bottom: 20px;
++  flex-wrap: wrap;
++}
++
++.history-summary {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
++  gap: 12px;
++  margin-bottom: 24px;
++}
++
++.history-stat {
++  background: white;
++  border-radius: 14px;
++  padding: 14px 16px;
++  box-shadow: 0 4px 0 rgba(0,0,0,0.06);
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.history-stat-label {
++  font-size: 12px;
++  font-weight: 700;
++  color: #8B85B0;
++  text-transform: uppercase;
++  letter-spacing: 0.02em;
++}
++
++.history-stat-value {
++  font-size: 20px;
++  font-weight: 800;
++  color: #B8860B;
++}
++
++.history-stat-value.negative {
++  color: var(--danger);
++}
++
++.history-section-title {
++  font-size: 16px;
++  margin: 20px 0 6px;
++}
+diff --git a/server/src/db.js b/server/src/db.js
+index b49f7d6..c33cbd0 100644
+--- a/server/src/db.js
++++ b/server/src/db.js
+@@ -24,6 +24,7 @@ db.exec(`
+     title TEXT NOT NULL,
+     icon TEXT NOT NULL DEFAULT '⭐',
+     stars INTEGER NOT NULL DEFAULT 1,
++    remarks TEXT NOT NULL DEFAULT '',
+     active INTEGER NOT NULL DEFAULT 1,
+     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+   );
+@@ -55,6 +56,11 @@ db.exec(`
+   );
+ `);
+ 
++const choreCols = db.prepare("PRAGMA table_info(chores)").all().map((c) => c.name);
++if (!choreCols.includes("remarks")) {
++  db.exec("ALTER TABLE chores ADD COLUMN remarks TEXT NOT NULL DEFAULT ''");
++}
++
+ const kidCount = db.prepare("SELECT COUNT(*) AS n FROM kids").get().n;
+ 
+ if (kidCount === 0) {
+diff --git a/server/src/routes.js b/server/src/routes.js
+index 56a0179..b2047f4 100644
+--- a/server/src/routes.js
++++ b/server/src/routes.js
+@@ -67,24 +67,148 @@ router.get("/kids/:id/chores", (req, res) => {
+ });
+ 
+ router.post("/kids/:id/chores", (req, res) => {
+-  const { title, icon = "⭐", stars = 1 } = req.body;
++  const { title, icon = "⭐", stars = 1, remarks = "" } = req.body;
+   if (!title || !title.trim()) {
+     return res.status(400).json({ error: "Title is required" });
+   }
+   const info = db
+     .prepare(
+-      "INSERT INTO chores (kid_id, title, icon, stars) VALUES (?, ?, ?, ?)"
++      "INSERT INTO chores (kid_id, title, icon, stars, remarks) VALUES (?, ?, ?, ?, ?)"
+     )
+-    .run(req.params.id, title.trim(), icon, Number(stars) || 1);
++    .run(req.params.id, title.trim(), icon, Number(stars) || 0, (remarks || "").trim());
+   const chore = db.prepare("SELECT * FROM chores WHERE id = ?").get(info.lastInsertRowid);
+   res.status(201).json({ ...chore, done: false });
+ });
+ 
++router.put("/chores/:id", (req, res) => {
++  const chore = db.prepare("SELECT * FROM chores WHERE id = ?").get(req.params.id);
++  if (!chore) return res.status(404).json({ error: "Chore not found" });
++
++  const title = req.body.title !== undefined ? req.body.title.trim() : chore.title;
++  if (!title) return res.status(400).json({ error: "Title is required" });
++  const icon = req.body.icon !== undefined ? req.body.icon : chore.icon;
++  const stars = req.body.stars !== undefined ? Number(req.body.stars) || 0 : chore.stars;
++  const remarks = req.body.remarks !== undefined ? req.body.remarks.trim() : chore.remarks;
++
++  db.prepare(
++    "UPDATE chores SET title = ?, icon = ?, stars = ?, remarks = ? WHERE id = ?"
++  ).run(title, icon, stars, remarks, chore.id);
++
++  const updated = db.prepare("SELECT * FROM chores WHERE id = ?").get(chore.id);
++  res.json(updated);
++});
++
+ router.delete("/chores/:id", (req, res) => {
+   db.prepare("UPDATE chores SET active = 0 WHERE id = ?").run(req.params.id);
+   res.status(204).end();
+ });
+ 
++// ---- Copy chores between kids ----
++router.post("/kids/:id/chores/copy", (req, res) => {
++  const targetId = Number(req.params.id);
++  const sourceId = Number(req.body.sourceKidId);
++
++  if (!sourceId || sourceId === targetId) {
++    return res.status(400).json({ error: "Pick a different kid to copy chores from" });
++  }
++
++  const sourceChores = db
++    .prepare("SELECT * FROM chores WHERE kid_id = ? AND active = 1")
++    .all(sourceId);
++  const existingTitles = new Set(
++    db
++      .prepare("SELECT LOWER(title) AS t FROM chores WHERE kid_id = ? AND active = 1")
++      .all(targetId)
++      .map((r) => r.t)
++  );
++  const insertChore = db.prepare(
++    "INSERT INTO chores (kid_id, title, icon, stars, remarks) VALUES (?, ?, ?, ?, ?)"
++  );
++
++  const copy = db.transaction((rows) => {
++    let count = 0;
++    for (const c of rows) {
++      if (existingTitles.has(c.title.toLowerCase())) continue;
++      insertChore.run(targetId, c.title, c.icon, c.stars, c.remarks || "");
++      count++;
++    }
++    return count;
++  });
++  const copiedCount = copy(sourceChores);
++
++  const date = todayStr();
++  const chores = db
++    .prepare(
++      `SELECT c.*, EXISTS(
++         SELECT 1 FROM completions co WHERE co.chore_id = c.id AND co.date = ?
++       ) AS done
++       FROM chores c
++       WHERE c.kid_id = ? AND c.active = 1
++       ORDER BY c.id`
++    )
++    .all(date, targetId);
++
++  res.status(201).json({
++    copiedCount,
++    chores: chores.map((c) => ({ ...c, done: !!c.done })),
++  });
++});
++
++// ---- History ----
++router.get("/kids/:id/history", (req, res) => {
++  const kidId = req.params.id;
++  const date = req.query.date || todayStr();
++
++  const completions = db
++    .prepare(
++      `SELECT co.id AS completion_id, co.date, co.completed_at,
++              c.id AS chore_id, c.title, c.icon, c.stars, c.remarks
++       FROM completions co
++       JOIN chores c ON c.id = co.chore_id
++       WHERE co.kid_id = ? AND co.date = ?
++       ORDER BY co.completed_at`
++    )
++    .all(kidId, date);
++
++  const redemptions = db
++    .prepare(
++      `SELECT re.id, re.redeemed_at, r.id AS reward_id, r.title, r.icon, r.cost
++       FROM redemptions re
++       JOIN rewards r ON r.id = re.reward_id
++       WHERE re.kid_id = ? AND substr(re.redeemed_at, 1, 10) = ?
++       ORDER BY re.redeemed_at`
++    )
++    .all(kidId, date);
++
++  const earned = completions.reduce((sum, c) => sum + c.stars, 0);
++  const spent = redemptions.reduce((sum, r) => sum + r.cost, 0);
++
++  const earnedThrough = db
++    .prepare(
++      `SELECT COALESCE(SUM(c.stars), 0) AS total
++       FROM completions co JOIN chores c ON c.id = co.chore_id
++       WHERE co.kid_id = ? AND co.date <= ?`
++    )
++    .get(kidId, date).total;
++  const spentThrough = db
++    .prepare(
++      `SELECT COALESCE(SUM(r.cost), 0) AS total
++       FROM redemptions re JOIN rewards r ON r.id = re.reward_id
++       WHERE re.kid_id = ? AND substr(re.redeemed_at, 1, 10) <= ?`
++    )
++    .get(kidId, date).total;
++
++  res.json({
++    date,
++    completions,
++    redemptions,
++    earned,
++    spent,
++    net: earned - spent,
++    balanceThrough: earnedThrough - spentThrough,
++  });
++});
++
+ router.post("/chores/:id/toggle", (req, res) => {
+   const date = req.body.date || todayStr();
+   const chore = db.prepare("SELECT * FROM chores WHERE id = ?").get(req.params.id);
+@@ -152,3 +276,26 @@ router.post("/rewards/:id/redeem", (req, res) => {
+ 
+   res.status(201).json({ reward, stars: kidStars(reward.kid_id) });
+ });
++
++// ---- Redemption history / reset ----
++router.get("/kids/:id/redemptions", (req, res) => {
++  const redemptions = db
++    .prepare(
++      `SELECT re.id, re.redeemed_at, r.id AS reward_id, r.title, r.icon, r.cost
++       FROM redemptions re
++       JOIN rewards r ON r.id = re.reward_id
++       WHERE re.kid_id = ?
++       ORDER BY re.redeemed_at DESC
++       LIMIT 50`
++    )
++    .all(req.params.id);
++  res.json(redemptions);
++});
++
++router.delete("/redemptions/:id", (req, res) => {
++  const redemption = db.prepare("SELECT * FROM redemptions WHERE id = ?").get(req.params.id);
++  if (!redemption) return res.status(404).json({ error: "Redemption not found" });
++
++  db.prepare("DELETE FROM redemptions WHERE id = ?").run(redemption.id);
++  res.json({ ok: true, stars: kidStars(redemption.kid_id) });
++});
+-- 
+2.43.0

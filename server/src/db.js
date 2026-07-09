@@ -65,6 +65,10 @@ const choreCols = choreColsResult.rows.map((r) => r.name);
 if (!choreCols.includes("remarks")) {
   await db.execute("ALTER TABLE chores ADD COLUMN remarks TEXT NOT NULL DEFAULT ''");
 }
+if (!choreCols.includes("sort_order")) {
+  await db.execute("ALTER TABLE chores ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+  await db.execute("UPDATE chores SET sort_order = id");
+}
 
 const kidCount = (await db.execute("SELECT COUNT(*) AS n FROM kids")).rows[0].n;
 

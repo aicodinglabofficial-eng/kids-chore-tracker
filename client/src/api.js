@@ -28,6 +28,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ sourceKidId }),
     }),
+  reorderChores: (kidId, ids) =>
+    request(`/kids/${kidId}/chores/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }),
 
   getHistory: (kidId, date) => request(`/kids/${kidId}/history?date=${date}`),
 

@@ -632,6 +632,29 @@ button {
   color: var(--green);
 }
 
+/* ---- Drag to reorder ---- */
+.drag-handle {
+  cursor: grab;
+  color: #ccc;
+  font-size: 20px;
+  padding: 0 2px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.manage-list li.dragging {
+  opacity: 0.35;
+}
+
+.manage-list li.drag-over {
+  border: 2px dashed var(--purple);
+  background: #f3eeff;
+}
+
 /* ---- Chore edit row ---- */
 .editing-row {
   flex-wrap: wrap;

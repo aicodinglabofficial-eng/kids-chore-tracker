@@ -78,7 +78,7 @@ router.get("/kids/:id/chores", async (req, res) => {
      ) AS done
      FROM chores c
      WHERE c.kid_id = ? AND c.active = 1
-     ORDER BY c.id`,
+     ORDER BY c.sort_order ASC, c.id ASC`,
     [date, req.params.id]
   );
   res.json(chores.map((c) => ({ ...c, done: !!c.done })));
@@ -89,12 +89,26 @@ router.post("/kids/:id/chores", async (req, res) => {
   if (!title || !title.trim()) {
     return res.status(400).json({ error: "Title is required" });
   }
+  const maxRow = await get(
+    "SELECT COALESCE(MAX(sort_order), -1) AS m FROM chores WHERE kid_id = ? AND active = 1",
+    [req.params.id]
+  );
+  const sortOrder = Number(maxRow.m) + 1;
   const info = await run(
-    "INSERT INTO chores (kid_id, title, icon, stars, remarks) VALUES (?, ?, ?, ?, ?)",
-    [req.params.id, title.trim(), icon, Number(stars) || 0, (remarks || "").trim()]
+    "INSERT INTO chores (kid_id, title, icon, stars, remarks, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+    [req.params.id, title.trim(), icon, Number(stars) || 0, (remarks || "").trim(), sortOrder]
   );
   const chore = await get("SELECT * FROM chores WHERE id = ?", [Number(info.lastInsertRowid)]);
   res.status(201).json({ ...chore, done: false });
+});
+
+router.put("/kids/:id/chores/reorder", async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "ids must be an array" });
+  for (let i = 0; i < ids.length; i++) {
+    await run("UPDATE chores SET sort_order = ? WHERE id = ? AND kid_id = ?", [i, ids[i], req.params.id]);
+  }
+  res.json({ ok: true });
 });
 
 router.put("/chores/:id", async (req, res) => {

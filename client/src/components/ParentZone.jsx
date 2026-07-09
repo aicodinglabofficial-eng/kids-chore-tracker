@@ -4,6 +4,33 @@ import { api } from "../api.js";
 const CHORE_ICONS = ["🦷", "🛏️", "📚", "🐶", "🧸", "🍽️", "👕", "🚿", "📝", "🧹"];
 const REWARD_ICONS = ["📖", "🍕", "🎬", "🎮", "🍦", "🚲", "🎨", "🏊"];
 
+const CHORE_PRESETS = [
+  { label: "Get Up on Time", icon: "⏰" },
+  { label: "Make the Bed", icon: "🛏️" },
+  { label: "Brush Teeth", icon: "🦷" },
+  { label: "Brush Hair, Comb & Apply Cream", icon: "💆‍♀️" },
+  { label: "Morning Grooming Routine", icon: "🪥" },
+  { label: "Finish Breakfast in 15 Minutes", icon: "🍽️" },
+  { label: "Complete Notes & Homework", icon: "📚" },
+  { label: "Pack School Bag", icon: "🎒" },
+  { label: "Clear Plates & Clean Table on Time", icon: "🍽️" },
+  { label: "Clean the Washroom", icon: "🚿" },
+  { label: "Tidy Up the Room", icon: "🧹" },
+  { label: "Put Toys Away", icon: "🧸" },
+  { label: "Bathe Properly Before 5:30 PM", icon: "🚿" },
+  { label: "Drink 2 Bottles of Water", icon: "💧" },
+  { label: "Daily Prayer", icon: "🙏" },
+  { label: "Support & Obey Parents", icon: "💝" },
+  { label: "Feed the Pet", icon: "🐶" },
+  { label: "Wash Hands Before Meals", icon: "🤲" },
+  { label: "Read for 20 Minutes", icon: "📖" },
+  { label: "Help Set the Table", icon: "🍴" },
+  { label: "Exercise / Stretch", icon: "🏃" },
+  { label: "Don't Wet the Bed", icon: "🛏️" },
+  { label: "Taking Things Without Permission", icon: "🚫" },
+  { label: "Fighting with Sibling", icon: "🚫" },
+];
+
 export default function ParentZone({ kids, onBack, onKidsChanged }) {
   const [selectedKidId, setSelectedKidId] = useState(kids[0]?.id ?? null);
   const [chores, setChores] = useState([]);
@@ -15,6 +42,8 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
   const [copyMsg, setCopyMsg] = useState("");
   const [editingChoreId, setEditingChoreId] = useState(null);
   const [editChoreForm, setEditChoreForm] = useState({ title: "", icon: "", stars: 0, remarks: "" });
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
 
   const selectedKid = kids.find((k) => k.id === selectedKidId);
 
@@ -39,6 +68,40 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
     const chore = await api.addChore(selectedKidId, choreForm);
     setChores((prev) => [...prev, chore]);
     setChoreForm({ title: "", icon: CHORE_ICONS[0], stars: 2, remarks: "" });
+  }
+
+  function handleChoreTitleChange(title) {
+    const preset = CHORE_PRESETS.find((p) => p.label === title);
+    setChoreForm((f) => ({ ...f, title, ...(preset ? { icon: preset.icon } : {}) }));
+  }
+
+  function handleDragStart(e, id) {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragOver(e, id) {
+    e.preventDefault();
+    if (id !== dragOverId) setDragOverId(id);
+  }
+
+  function handleDrop(e, targetId) {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return; }
+    const reordered = [...chores];
+    const fromIdx = reordered.findIndex((c) => c.id === dragId);
+    const toIdx = reordered.findIndex((c) => c.id === targetId);
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setChores(reordered);
+    setDragId(null);
+    setDragOverId(null);
+    api.reorderChores(selectedKidId, reordered.map((c) => c.id));
+  }
+
+  function handleDragEnd() {
+    setDragId(null);
+    setDragOverId(null);
   }
 
   function startEditChore(chore) {
@@ -199,7 +262,16 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
                     </button>
                   </li>
                 ) : (
-                  <li key={c.id}>
+                  <li
+                    key={c.id}
+                    draggable
+                    className={`${dragId === c.id ? "dragging" : ""} ${dragOverId === c.id && dragId !== c.id ? "drag-over" : ""}`}
+                    onDragStart={(e) => handleDragStart(e, c.id)}
+                    onDragOver={(e) => handleDragOver(e, c.id)}
+                    onDrop={(e) => handleDrop(e, c.id)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <span className="drag-handle" title="Drag to reorder">⠿</span>
                     <span>
                       {c.icon} {c.title}
                       {c.remarks && <span className="chore-remarks">{c.remarks}</span>}
@@ -218,11 +290,17 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
               )}
             </ul>
             <form className="inline-form" onSubmit={addChore}>
+              <datalist id="chore-presets">
+                {CHORE_PRESETS.map((p) => (
+                  <option key={p.label} value={p.label} />
+                ))}
+              </datalist>
               <input
                 className="text-input"
-                placeholder="Chore name"
+                list="chore-presets"
+                placeholder="Type or pick a chore…"
                 value={choreForm.title}
-                onChange={(e) => setChoreForm({ ...choreForm, title: e.target.value })}
+                onChange={(e) => handleChoreTitleChange(e.target.value)}
               />
               <select
                 className="text-input select-input"
