@@ -272,7 +272,7 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
                     onDragEnd={handleDragEnd}
                   >
                     <span className="drag-handle" title="Drag to reorder">⠿</span>
-                    <span>
+                    <span className="chore-label">
                       {c.icon} {c.title}
                       {c.remarks && <span className="chore-remarks">{c.remarks}</span>}
                     </span>

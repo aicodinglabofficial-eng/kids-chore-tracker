@@ -38,7 +38,7 @@ button {
 .screen {
   min-height: 100vh;
   padding: 32px 20px 60px;
-  max-width: 960px;
+  max-width: 1140px;
   margin: 0 auto;
 }
 
@@ -538,11 +538,11 @@ button {
 
 .parent-panels {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 3fr 2fr;
   gap: 24px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .parent-panels {
     grid-template-columns: 1fr;
   }
@@ -573,16 +573,32 @@ button {
 
 .manage-list li {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 8px;
   background: white;
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 700;
 }
 
+/* title span in rewards / redemption rows (no drag handle) */
 .manage-list li span:first-child {
   flex: 1;
+  min-width: 0;
+}
+
+/* title span in chore rows (drag handle is first-child) */
+.chore-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.manage-meta,
+.manage-date,
+.manage-list li button {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .manage-meta {
@@ -636,10 +652,11 @@ button {
 .drag-handle {
   cursor: grab;
   color: #ccc;
-  font-size: 20px;
+  font-size: 18px;
   padding: 0 2px;
   user-select: none;
-  flex-shrink: 0;
+  flex: none;
+  margin-top: 1px;
 }
 
 .drag-handle:active {
