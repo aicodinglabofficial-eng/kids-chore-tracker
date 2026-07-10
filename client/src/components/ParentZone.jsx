@@ -294,11 +294,16 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
                 {CHORE_PRESETS.map((p) => (
                   <option key={p.label} value={p.label} />
                 ))}
+                {chores
+                  .filter((c) => !CHORE_PRESETS.some((p) => p.label === c.title))
+                  .map((c) => (
+                    <option key={`c-${c.id}`} value={c.title} />
+                  ))}
               </datalist>
               <input
                 className="text-input"
                 list="chore-presets"
-                placeholder="Type or pick a chore…"
+                placeholder="Type any name or pick from list…"
                 value={choreForm.title}
                 onChange={(e) => handleChoreTitleChange(e.target.value)}
               />
