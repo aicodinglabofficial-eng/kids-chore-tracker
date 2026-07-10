@@ -70,6 +70,57 @@ if (!choreCols.includes("sort_order")) {
   await db.execute("UPDATE chores SET sort_order = id");
 }
 
+// ---- Chore templates table ----
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS chore_templates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT    NOT NULL UNIQUE,
+    icon       TEXT    NOT NULL DEFAULT '⭐',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
+const templateCount = Number((await db.execute("SELECT COUNT(*) AS n FROM chore_templates")).rows[0].n);
+if (templateCount === 0) {
+  const presets = [
+    { title: "Get Up on Time",                    icon: "⏰" },
+    { title: "Make the Bed",                      icon: "🛏️" },
+    { title: "Brush Teeth",                       icon: "🦷" },
+    { title: "Brush Hair, Comb & Apply Cream",    icon: "💆‍♀️" },
+    { title: "Morning Grooming Routine",          icon: "🪥" },
+    { title: "Finish Breakfast in 15 Minutes",    icon: "🍽️" },
+    { title: "Complete Notes & Homework",         icon: "📚" },
+    { title: "Pack School Bag",                   icon: "🎒" },
+    { title: "Clear Plates & Clean Table on Time",icon: "🍽️" },
+    { title: "Clean the Washroom",                icon: "🚿" },
+    { title: "Tidy Up the Room",                  icon: "🧹" },
+    { title: "Put Toys Away",                     icon: "🧸" },
+    { title: "Bathe Properly Before 5:30 PM",     icon: "🛁" },
+    { title: "Drink 2 Bottles of Water",          icon: "💧" },
+    { title: "Daily Prayer",                      icon: "🙏" },
+    { title: "Support & Obey Parents",            icon: "💝" },
+    { title: "Feed the Pet",                      icon: "🐶" },
+    { title: "Wash Hands Before Meals",           icon: "🤲" },
+    { title: "Read for 20 Minutes",               icon: "📖" },
+    { title: "Help Set the Table",                icon: "🍴" },
+    { title: "Exercise / Stretch",                icon: "🏃" },
+    { title: "Don't Wet the Bed",                 icon: "🛏️" },
+    { title: "Taking Things Without Permission",  icon: "🚫" },
+    { title: "Fighting with Sibling",             icon: "🚫" },
+  ];
+  for (let i = 0; i < presets.length; i++) {
+    await db.execute({
+      sql: "INSERT INTO chore_templates (title, icon, sort_order) VALUES (?, ?, ?)",
+      args: [presets[i].title, presets[i].icon, i],
+    });
+  }
+}
+
+if (!choreCols.includes("template_id")) {
+  await db.execute("ALTER TABLE chores ADD COLUMN template_id INTEGER REFERENCES chore_templates(id)");
+}
+
 const kidCount = (await db.execute("SELECT COUNT(*) AS n FROM kids")).rows[0].n;
 
 if (kidCount === 0) {

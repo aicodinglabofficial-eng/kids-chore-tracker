@@ -18,6 +18,8 @@ export const api = {
   addKid: (data) => request("/kids", { method: "POST", body: JSON.stringify(data) }),
   deleteKid: (id) => request(`/kids/${id}`, { method: "DELETE" }),
 
+  getChoreTemplates: () => request("/chore-templates"),
+
   getChores: (kidId, date) => request(`/kids/${kidId}/chores?date=${date}`),
   addChore: (kidId, data) => request(`/kids/${kidId}/chores`, { method: "POST", body: JSON.stringify(data) }),
   updateChore: (id, data) => request(`/chores/${id}`, { method: "PUT", body: JSON.stringify(data) }),

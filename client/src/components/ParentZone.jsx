@@ -4,32 +4,6 @@ import { api } from "../api.js";
 const CHORE_ICONS = ["🦷", "🛏️", "📚", "🐶", "🧸", "🍽️", "👕", "🚿", "📝", "🧹"];
 const REWARD_ICONS = ["📖", "🍕", "🎬", "🎮", "🍦", "🚲", "🎨", "🏊"];
 
-const CHORE_PRESETS = [
-  { label: "Get Up on Time", icon: "⏰" },
-  { label: "Make the Bed", icon: "🛏️" },
-  { label: "Brush Teeth", icon: "🦷" },
-  { label: "Brush Hair, Comb & Apply Cream", icon: "💆‍♀️" },
-  { label: "Morning Grooming Routine", icon: "🪥" },
-  { label: "Finish Breakfast in 15 Minutes", icon: "🍽️" },
-  { label: "Complete Notes & Homework", icon: "📚" },
-  { label: "Pack School Bag", icon: "🎒" },
-  { label: "Clear Plates & Clean Table on Time", icon: "🍽️" },
-  { label: "Clean the Washroom", icon: "🚿" },
-  { label: "Tidy Up the Room", icon: "🧹" },
-  { label: "Put Toys Away", icon: "🧸" },
-  { label: "Bathe Properly Before 5:30 PM", icon: "🚿" },
-  { label: "Drink 2 Bottles of Water", icon: "💧" },
-  { label: "Daily Prayer", icon: "🙏" },
-  { label: "Support & Obey Parents", icon: "💝" },
-  { label: "Feed the Pet", icon: "🐶" },
-  { label: "Wash Hands Before Meals", icon: "🤲" },
-  { label: "Read for 20 Minutes", icon: "📖" },
-  { label: "Help Set the Table", icon: "🍴" },
-  { label: "Exercise / Stretch", icon: "🏃" },
-  { label: "Don't Wet the Bed", icon: "🛏️" },
-  { label: "Taking Things Without Permission", icon: "🚫" },
-  { label: "Fighting with Sibling", icon: "🚫" },
-];
 
 export default function ParentZone({ kids, onBack, onKidsChanged }) {
   const [selectedKidId, setSelectedKidId] = useState(kids[0]?.id ?? null);
@@ -44,8 +18,13 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
   const [editChoreForm, setEditChoreForm] = useState({ title: "", icon: "", stars: 0, remarks: "" });
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [templates, setTemplates] = useState([]);
 
   const selectedKid = kids.find((k) => k.id === selectedKidId);
+
+  useEffect(() => {
+    api.getChoreTemplates().then(setTemplates);
+  }, []);
 
   useEffect(() => {
     if (!selectedKidId) return;
@@ -68,11 +47,13 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
     const chore = await api.addChore(selectedKidId, choreForm);
     setChores((prev) => [...prev, chore]);
     setChoreForm({ title: "", icon: CHORE_ICONS[0], stars: 2, remarks: "" });
+    // Refresh templates so the new chore appears in the dropdown
+    api.getChoreTemplates().then(setTemplates);
   }
 
   function handleChoreTitleChange(title) {
-    const preset = CHORE_PRESETS.find((p) => p.label === title);
-    setChoreForm((f) => ({ ...f, title, ...(preset ? { icon: preset.icon } : {}) }));
+    const match = templates.find((t) => t.title === title);
+    setChoreForm((f) => ({ ...f, title, ...(match ? { icon: match.icon } : {}) }));
   }
 
   function handleDragStart(e, id) {
@@ -291,14 +272,9 @@ export default function ParentZone({ kids, onBack, onKidsChanged }) {
             </ul>
             <form className="inline-form" onSubmit={addChore}>
               <datalist id="chore-presets">
-                {CHORE_PRESETS.map((p) => (
-                  <option key={p.label} value={p.label} />
+                {templates.map((t) => (
+                  <option key={t.id} value={t.title} />
                 ))}
-                {chores
-                  .filter((c) => !CHORE_PRESETS.some((p) => p.label === c.title))
-                  .map((c) => (
-                    <option key={`c-${c.id}`} value={c.title} />
-                  ))}
               </datalist>
               <input
                 className="text-input"

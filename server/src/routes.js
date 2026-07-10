@@ -69,6 +69,26 @@ router.delete("/kids/:id", async (req, res) => {
   res.status(204).end();
 });
 
+// ---- Chore Templates ----
+router.get("/chore-templates", async (req, res) => {
+  const templates = await all("SELECT * FROM chore_templates ORDER BY sort_order ASC, id ASC");
+  res.json(templates);
+});
+
+router.post("/chore-templates", async (req, res) => {
+  const { title, icon = "⭐" } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: "Title is required" });
+  const existing = await get("SELECT * FROM chore_templates WHERE LOWER(title) = LOWER(?)", [title.trim()]);
+  if (existing) return res.json(existing);
+  const maxRow = await get("SELECT COALESCE(MAX(sort_order), -1) AS m FROM chore_templates");
+  const info = await run(
+    "INSERT INTO chore_templates (title, icon, sort_order) VALUES (?, ?, ?)",
+    [title.trim(), icon, Number(maxRow.m) + 1]
+  );
+  const template = await get("SELECT * FROM chore_templates WHERE id = ?", [Number(info.lastInsertRowid)]);
+  res.status(201).json(template);
+});
+
 // ---- Chores ----
 router.get("/kids/:id/chores", async (req, res) => {
   const date = req.query.date || todayStr();
@@ -89,14 +109,23 @@ router.post("/kids/:id/chores", async (req, res) => {
   if (!title || !title.trim()) {
     return res.status(400).json({ error: "Title is required" });
   }
+  // Find or create a template for this chore title so it appears in future dropdowns
+  let template = await get("SELECT * FROM chore_templates WHERE LOWER(title) = LOWER(?)", [title.trim()]);
+  if (!template) {
+    const maxT = await get("SELECT COALESCE(MAX(sort_order), -1) AS m FROM chore_templates");
+    const tInfo = await run(
+      "INSERT INTO chore_templates (title, icon, sort_order) VALUES (?, ?, ?)",
+      [title.trim(), icon, Number(maxT.m) + 1]
+    );
+    template = await get("SELECT * FROM chore_templates WHERE id = ?", [Number(tInfo.lastInsertRowid)]);
+  }
   const maxRow = await get(
     "SELECT COALESCE(MAX(sort_order), -1) AS m FROM chores WHERE kid_id = ? AND active = 1",
     [req.params.id]
   );
-  const sortOrder = Number(maxRow.m) + 1;
   const info = await run(
-    "INSERT INTO chores (kid_id, title, icon, stars, remarks, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
-    [req.params.id, title.trim(), icon, Number(stars) || 0, (remarks || "").trim(), sortOrder]
+    "INSERT INTO chores (kid_id, title, icon, stars, remarks, sort_order, template_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [req.params.id, title.trim(), icon, Number(stars) || 0, (remarks || "").trim(), Number(maxRow.m) + 1, template.id]
   );
   const chore = await get("SELECT * FROM chores WHERE id = ?", [Number(info.lastInsertRowid)]);
   res.status(201).json({ ...chore, done: false });
