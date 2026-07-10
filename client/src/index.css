@@ -649,7 +649,7 @@ button {
 }
 
 /* ---- Drag to reorder ---- */
-.drag-handle {
+.manage-list li span.drag-handle {
   cursor: grab;
   color: #ccc;
   font-size: 18px;
@@ -659,7 +659,7 @@ button {
   margin-top: 1px;
 }
 
-.drag-handle:active {
+.manage-list li span.drag-handle:active {
   cursor: grabbing;
 }
 
