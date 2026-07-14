@@ -6,16 +6,36 @@ import HistoryView from "./HistoryView.jsx";
 
 const CHEERS = ["Awesome job! 🎉", "You're a star! 🌟", "Way to go! 🙌", "Amazing! ✨", "Nailed it! 💪"];
 
+function shiftDate(dateStr, delta) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + delta);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function formatDateLabel(dateStr, today) {
+  if (dateStr === today) return "Today";
+  if (dateStr === shiftDate(today, -1)) return "Yesterday";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 export default function KidDashboard({ kid, onBack, onKidUpdated }) {
   const [tab, setTab] = useState("chores");
   const [chores, setChores] = useState([]);
   const [rewards, setRewards] = useState([]);
   const [balance, setBalance] = useState(kid.stars.balance);
   const [toast, setToast] = useState(null);
-  const date = todayStr();
+  const [date, setDate] = useState(todayStr());
 
   useEffect(() => {
     api.getChores(kid.id, date).then(setChores);
+  }, [kid.id, date]);
+
+  useEffect(() => {
     api.getRewards(kid.id).then(setRewards);
   }, [kid.id]);
 
@@ -47,6 +67,7 @@ export default function KidDashboard({ kid, onBack, onKidUpdated }) {
 
   const completedCount = chores.filter((c) => c.done).length;
   const progress = chores.length ? Math.round((completedCount / chores.length) * 100) : 0;
+  const isToday = date === todayStr();
 
   return (
     <div className="screen dashboard-screen" style={{ "--kid-color": kid.color }}>
@@ -67,12 +88,12 @@ export default function KidDashboard({ kid, onBack, onKidUpdated }) {
         <div className="progress-fill" style={{ width: `${progress}%` }} />
       </div>
       <p className="progress-label">
-        {completedCount} of {chores.length} chores done today
+        {completedCount} of {chores.length} chores done {isToday ? "today" : `on ${formatDateLabel(date, todayStr())}`}
       </p>
 
       <div className="tab-row">
         <button className={`tab-btn ${tab === "chores" ? "active" : ""}`} onClick={() => setTab("chores")}>
-          ✅ Today's Chores
+          ✅ Chores
         </button>
         <button className={`tab-btn ${tab === "rewards" ? "active" : ""}`} onClick={() => setTab("rewards")}>
           🎁 Rewards Store
@@ -82,7 +103,39 @@ export default function KidDashboard({ kid, onBack, onKidUpdated }) {
         </button>
       </div>
 
-      {tab === "chores" && <ChoreList chores={chores} onToggle={toggleChore} />}
+      {tab === "chores" && (
+        <>
+          <div className="history-date-row">
+            <button className="btn btn-ghost" onClick={() => setDate((d) => shiftDate(d, -1))} aria-label="Previous day">
+              ◀
+            </button>
+            <span className="field-label" style={{ margin: 0, minWidth: 110, textAlign: "center" }}>
+              {formatDateLabel(date, todayStr())}
+            </span>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setDate((d) => shiftDate(d, 1))}
+              disabled={isToday}
+              aria-label="Next day"
+            >
+              ▶
+            </button>
+            <input
+              type="date"
+              className="text-input"
+              value={date}
+              max={todayStr()}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            {!isToday && (
+              <button className="btn btn-ghost" onClick={() => setDate(todayStr())}>
+                Today
+              </button>
+            )}
+          </div>
+          <ChoreList chores={chores} onToggle={toggleChore} />
+        </>
+      )}
       {tab === "rewards" && (
         <RewardsStore rewards={rewards} balance={balance} onRedeem={redeemReward} />
       )}
